@@ -12,5 +12,9 @@ tsfmt.json
 .esbuild.config.js
 .eslintrc.json
 .eslintignore
+*.map
 *.tgz
 *.test.ts
+dist/test
+injectVersion.js
+*.proposed.*.d.ts

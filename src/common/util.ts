@@ -2,7 +2,6 @@
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/
 
-import type * as vscode from "vscode";
 import type { ReplacementOption } from "./baseTelemetryReporter";
 
 export const enum TelemetryLevel {
@@ -13,34 +12,6 @@ export const enum TelemetryLevel {
 
 export class TelemetryUtil {
 	private static _instance: TelemetryUtil | undefined;
-
-	constructor (private readonly vscodeAPI: typeof vscode) { }
-
-	public getTelemetryLevel(): TelemetryLevel {
-		const TELEMETRY_CONFIG_ID = "telemetry";
-		const TELEMETRY_CONFIG_ENABLED_ID = "enableTelemetry";
-
-		try {
-			const telemetryConfiguration = this.vscodeAPI.env.telemetryConfiguration;
-			if (telemetryConfiguration.isUsageEnabled && telemetryConfiguration.isErrorsEnabled && telemetryConfiguration.isCrashEnabled) {
-				return TelemetryLevel.ON;
-			} else if (telemetryConfiguration.isErrorsEnabled && telemetryConfiguration.isCrashEnabled) {
-				return TelemetryLevel.ERROR;
-			} else {
-				return TelemetryLevel.OFF;
-			}
-		} catch {
-			// Could be undefined in old versions of vs code
-			if (this.vscodeAPI.env.isTelemetryEnabled !== undefined) {
-				return this.vscodeAPI.env.isTelemetryEnabled ? TelemetryLevel.ON : TelemetryLevel.OFF;
-			}
-
-			// We use the old and new setting to determine the telemetry level as we must respect both
-			const config = this.vscodeAPI.workspace.getConfiguration(TELEMETRY_CONFIG_ID);
-			const enabled = config.get<boolean>(TELEMETRY_CONFIG_ENABLED_ID);
-			return enabled ? TelemetryLevel.ON : TelemetryLevel.OFF;
-		}
-	}
 
 	public static applyReplacements(data: Record<string, any>, replacementOptions: ReplacementOption[]) {
 		for (const key of Object.keys(data)) {
@@ -73,10 +44,34 @@ export class TelemetryUtil {
 		);
 	}
 
+	// This also includes the common properties which core mixes in
+	// __GDPR__COMMON__ "common.os" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.nodeArch" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.platformversion" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.extname" : { "classification": "PublicNonPersonalData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.extversion" : { "classification": "PublicNonPersonalData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.vscodemachineid" : { "endPoint": "MacAddressHash", "classification": "EndUserPseudonymizedInformation", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.vscodesessionid" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.vscodeversion" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.uikind" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.remotename" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.isnewappinstall" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.product" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	// __GDPR__COMMON__ "common.telemetryclientversion" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+	public static getAdditionalCommonProperties(osShim: { release: string, platform: string, architecture: string }) {
+		return {
+			"common.os": osShim.platform,
+			"common.nodeArch": osShim.architecture,
+			"common.platformversion":  (osShim.release || "").replace(/^(\d+)(\.\d+)?(\.\d+)?(.*)/, "$1$2$3"),
+			// Do not change this string as it gets found and replaced upon packaging
+			"common.telemetryclientversion": "PACKAGE_JSON_VERSION"
+		};
+	}
+
 	// Get singleton instance of TelemetryUtil
-	public static getInstance(vscodeAPI: typeof vscode): TelemetryUtil {
+	public static getInstance(): TelemetryUtil {
 		if (!TelemetryUtil._instance) {
-			TelemetryUtil._instance = new TelemetryUtil(vscodeAPI);
+			TelemetryUtil._instance = new TelemetryUtil();
 		}
 		return TelemetryUtil._instance;
 	}

@@ -6,17 +6,17 @@ import * as os from "os";
 import * as vscode from "vscode";
 import * as https from "https";
 import type { TelemetryClient } from "applicationinsights";
-import { AppenderData, BaseTelemetryReporter, ReplacementOption } from "../common/baseTelemetryReporter";
-import { BaseTelemetryAppender, BaseTelemetryClient } from "../common/baseTelemetryAppender";
+import { SenderData, BaseTelemetryReporter, ReplacementOption } from "../common/baseTelemetryReporter";
+import { BaseTelemetrySender, BaseTelemetryClient } from "../common/baseTelemetrySender";
 import { TelemetryUtil } from "../common/util";
 import type { IXHROverride, IPayloadData } from "@microsoft/1ds-post-js";
 import { oneDataSystemClientFactory } from "../common/1dsClientFactory";
 /**
- * A factory function which creates a telemetry client to be used by an appender to send telemetry in a node application.
+ * A factory function which creates a telemetry client to be used by an sender to send telemetry in a node application.
  *
  * @param key The app insights key
  * @param replacementOptions Optional list of {@link ReplacementOption replacements} to apply to the telemetry client. This allows
- * the appender to filter out any sensitive or unnecessary information from the telemetry server.
+ * the sender to filter out any sensitive or unnecessary information from the telemetry server.
  *
  * @returns A promise which resolves to the telemetry client or rejects upon error
  */
@@ -59,7 +59,7 @@ const appInsightsClientFactory = async (key: string, replacementOptions?: Replac
 
 	// Sets the appinsights client into a standardized form
 	const telemetryClient: BaseTelemetryClient = {
-		logEvent: (eventName: string, data?: AppenderData) => {
+		logEvent: (eventName: string, data?: SenderData) => {
 			try {
 				appInsightsClient?.trackEvent({
 					name: eventName,
@@ -70,21 +70,10 @@ const appInsightsClientFactory = async (key: string, replacementOptions?: Replac
 				throw new Error("Failed to log event to app insights!\n" + e.message);
 			}
 		},
-		logException: (exception: Error, data?: AppenderData) => {
-			try {
-				appInsightsClient?.trackException({
-					exception,
-					properties: data?.properties,
-					measurements: data?.measurements
-				});
-			} catch(e: any) {
-				throw new Error("Failed to log exception to app insights!\n" + e.message);
-			}
-		},
 		flush: async () => {
 			try {
 				appInsightsClient?.flush();
-			} catch(e: any) {
+			} catch (e: any) {
 				throw new Error("Failed to flush app insights!\n" + e.message);
 			}
 		}
@@ -155,25 +144,23 @@ function getXHROverride() {
 }
 
 export default class TelemetryReporter extends BaseTelemetryReporter {
-	constructor(extensionId: string, extensionVersion: string, key: string, firstParty?: boolean, replacementOptions?: ReplacementOption[]) {
+	constructor(key: string, replacementOptions?: ReplacementOption[]) {
 		let clientFactory = (key: string) => appInsightsClientFactory(key, replacementOptions);
 		// If key is usable by 1DS use the 1DS SDk
 		if (TelemetryUtil.shouldUseOneDataSystemSDK(key)) {
 			clientFactory = (key: string) => oneDataSystemClientFactory(key, vscode, getXHROverride());
 		}
 
-		const appender = new BaseTelemetryAppender(key, clientFactory);
-		if (key && key.indexOf("AIF-") === 0) {
-			throw new Error("AIF keys are no longer supported. Please switch to 1DS keys for 1st party extensions");
-		}
-		// 1DS is always first party
-		if (TelemetryUtil.shouldUseOneDataSystemSDK(key)) {
-			firstParty = true;
-		}
-		super(extensionId, extensionVersion, appender, {
+		const osShim = {
 			release: os.release(),
 			platform: os.platform(),
 			architecture: os.arch(),
-		}, vscode, firstParty);
+		};
+
+		const sender = new BaseTelemetrySender(key, clientFactory,);
+		if (key && key.indexOf("AIF-") === 0) {
+			throw new Error("AIF keys are no longer supported. Please switch to 1DS keys for 1st party extensions");
+		}
+		super(sender, vscode, { additionalCommonProperties: TelemetryUtil.getAdditionalCommonProperties(osShim) });
 	}
 }
